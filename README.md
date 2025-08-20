@@ -1,0 +1,2 @@
+# mushroommap
+Sēņu karte

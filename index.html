@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sēņotājs — Web pilots</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Sēņotājs" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' fill='%23f3f4f6'/%3E%3Ccircle cx='60' cy='55' r='28' fill='%238b5cf6'/%3E%3Crect x='40' y='72' width='40' height='20' rx='10' fill='%238b5cf6'/%3E%3C/svg%3E" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    #app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+    header { padding: .75rem 1rem; display: flex; gap: .5rem; align-items: center; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: #fff; z-index: 1000; }
+    header h1 { font-size: 1.1rem; margin: 0; font-weight: 700; }
+    header .spacer { flex: 1; }
+    button, .btn { appearance: none; border: 1px solid #d1d5db; background: #fff; padding: .5rem .75rem; border-radius: .75rem; font-weight: 600; }
+    button.primary { background: #8b5cf6; border-color: #7c3aed; color: #fff; }
+    button:disabled { opacity: .5; }
+    #map { height: 100%; width: 100%; }
+    .floating { position: absolute; right: .75rem; bottom: .75rem; display: grid; gap: .5rem; }
+    .card { background: rgba(255,255,255,.96); backdrop-filter: saturate(1.2) blur(6px); border: 1px solid #e5e7eb; border-radius: 1rem; padding: .75rem; box-shadow: 0 10px 20px rgba(0,0,0,.06); }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top-left-radius: 16px; border-top-right-radius: 16px; box-shadow: 0 -10px 30px rgba(0,0,0,.2); padding: 1rem; max-height: 80vh; overflow: auto; }
+    .row { display: grid; gap: .5rem; margin-bottom: .75rem; }
+    label { font-size: .85rem; color: #374151; }
+    input[type="text"], textarea, select { width: 100%; padding: .6rem .7rem; border-radius: .6rem; border: 1px solid #d1d5db; }
+    .thumb { width: 100%; max-height: 180px; object-fit: cover; border-radius: .5rem; border: 1px solid #e5e7eb; }
+    .badge { display: inline-block; font-size: .75rem; padding: .25rem .5rem; border-radius: 999px; border: 1px solid #e5e7eb; background:#f9fafb }
+    footer { padding: .5rem; text-align: center; font-size: .8rem; color: #6b7280; border-top: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Sēņotājs (web pilots)</h1>
+    <span class="badge" id="count">0 punkti</span>
+    <div class="spacer"></div>
+    <button id="btn-locate">Mana vieta</button>
+    <button id="btn-add" class="primary">+ Pievienot</button>
+  </header>
+  <div id="map"></div>
+  <footer>
+    Foto ar GPS ir <b>obligāts</b>. Ja foto nav GPS, punkts netiks saglabāts. Dati glabājas tikai šajā ierīcē.
+  </footer>
+</div>
+
+<!-- Sheet for adding a spot -->
+<div id="sheet" class="sheet" style="display:none">
+  <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem">
+    <strong>Jauns punkts</strong>
+    <div class="spacer"></div>
+    <button id="btn-close">Aizvērt</button>
+  </div>
+  <div class="row">
+    <label>Foto (obligāts ar GPS)</label>
+    <input type="file" accept="image/*" id="photo" capture="environment" />
+    <img id="preview" class="thumb" style="display:none" />
+    <div id="gps-indicator" class="badge">GPS nav nolasīts</div>
+  </div>
+  <div class="row"><label>Nosaukums</label><input type="text" id="title" placeholder="Kāda sēne / vieta" /></div>
+  <div class="row"><label>Suga</label><input type="text" id="species" placeholder="Piem., baravika" /></div>
+  <div class="row"><label>Sezona</label>
+    <select id="season">
+      <option value="">—</option>
+      <option>Vasara</option>
+      <option>Rudens</option>
+      <option>Pavasaris</option>
+    </select>
+  </div>
+  <div class="row"><label>Apraksts</label><textarea id="desc" rows="3" placeholder="Piem., pie bērziem, labā malciņa"></textarea></div>
+  <div class="row" style="display:flex; gap:.5rem">
+    <button id="btn-save" class="primary" disabled>Saglabāt</button>
+    <button id="btn-reset">Notīrīt</button>
+  </div>
+</div>
+
+<!-- Floating actions -->
+<div class="floating">
+  <div class="card" style="display:grid; gap:.5rem;">
+    <button id="btn-export">Eksportēt (.json)</button>
+    <input type="file" id="import" accept="application/json" style="display:none" />
+    <button id="btn-import">Importēt</button>
+    <button id="btn-clear" style="color:#b91c1c; border-color:#fecaca;">Dzēst visu</button>
+  </div>
+</div>
+
+<!-- Dependencies -->
+<script src="https://unpkg.com/exifr@7.1.3/dist/full.umd.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+// --- State ---
+const state = {
+  map: null,
+  layer: null,
+  data: [], // {id,title,species,season,desc,lat,lng,photoDataURL,createdAt}
+};
+
+const $ = sel => document.querySelector(sel);
+const $$ = sel => document.querySelectorAll(sel);
+
+// --- Local Storage ---
+const KEY = 'mushroommap.spots.v1';
+function load() {
+  try { state.data = JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  catch { state.data = []; }
+  $('#count').textContent = `${state.data.length} punkti`;
+}
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(state.data));
+  $('#count').textContent = `${state.data.length} punkti`;
+}
+
+// --- Map init ---
+function initMap() {
+  state.map = L.map('map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(state.map);
+  state.layer = L.layerGroup().addTo(state.map);
+  state.map.setView([56.9496, 24.1052], 12); // Rīga kā noklusējums
+  renderMarkers();
+}
+
+function renderMarkers() {
+  state.layer.clearLayers();
+  state.data.forEach(s => {
+    const m = L.marker([s.lat, s.lng]).addTo(state.layer);
+    const html = `
+      <div style="min-width:180px">
+        <strong>${escapeHtml(s.title || 'Sēņu vieta')}</strong><br/>
+        <small>${fmt(s.species)} ${fmt(s.season)}</small><br/>
+        ${s.photoDataURL ? `<img src="${s.photoDataURL}" style="width:100%;max-height:140px;object-fit:cover;margin-top:.25rem;border-radius:.35rem;border:1px solid #eee"/>` : ''}
+        ${s.desc ? `<div style='margin-top:.25rem'>${escapeHtml(s.desc)}</div>` : ''}
+        <div style="margin-top:.25rem;color:#6b7280;font-size:.8rem">${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</div>
+      </div>`;
+    m.bindPopup(html);
+  });
+}
+
+function escapeHtml(str){ return (str||'').replace(/[&<>"]+/g, s=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[s])); }
+function fmt(x){ return x ? `<span class='badge'>${escapeHtml(x)}</span>` : ''; }
+
+// --- UI controls ---
+$('#btn-locate').addEventListener('click', ()=>{
+  if (!navigator.geolocation) return alert('Šajā ierīcē nav pieejams GPS.');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    state.map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+  }, ()=> alert('Neizdevās iegūt atrašanās vietu.')); 
+});
+
+const sheet = $('#sheet');
+$('#btn-add').onclick = ()=> { sheet.style.display = 'block'; };
+$('#btn-close').onclick = ()=> { resetForm(); sheet.style.display = 'none'; };
+$('#btn-reset').onclick = ()=> resetForm();
+
+const photoInput = $('#photo');
+const preview = $('#preview');
+const gpsBadge = $('#gps-indicator');
+let currentGPS = null;
+let currentPhotoDataURL = null;
+
+photoInput.addEventListener('change', async (e)=>{
+  currentGPS = null; currentPhotoDataURL = null; gpsBadge.textContent = 'GPS tiek nolasīts…';
+  const file = e.target.files?.[0];
+  if (!file) { gpsBadge.textContent = 'GPS nav nolasīts'; return; }
+
+  // Preview
+  const reader = new FileReader();
+  reader.onload = ev => { preview.src = ev.target.result; preview.style.display = 'block'; currentPhotoDataURL = ev.target.result; };
+  reader.readAsDataURL(file);
+
+  try {
+    // EXIF ar exifr (atbalsta arī HEIC daudzos gadījumos)
+    const exif = await exifr.parse(file, { gps: true });
+    if (exif && exif.latitude && exif.longitude) {
+      currentGPS = { lat: exif.latitude, lng: exif.longitude };
+      gpsBadge.textContent = `GPS: ${exif.latitude.toFixed(5)}, ${exif.longitude.toFixed(5)}`;
+    } else {
+      gpsBadge.textContent = 'GPS nav atrasts – pārbaudi kameras iestatījumus';
+    }
+  } catch(err){
+    console.error(err);
+    gpsBadge.textContent = 'Kļūda lasot EXIF';
+  }
+  validateForm();
+});
+
+function validateForm(){
+  const ok = !!($('#title').value.trim()) && !!currentGPS && !!currentPhotoDataURL;
+  $('#btn-save').disabled = !ok;
+}
+['title','species','season','desc'].forEach(id => { $('#'+id).addEventListener('input', validateForm); });
+
+$('#btn-save').addEventListener('click', ()=>{
+  if (!currentGPS) { alert('Nepieciešamas GPS koordinātes foto metadatos.'); return; }
+  const item = {
+    id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+    title: $('#title').value.trim(),
+    species: $('#species').value.trim(),
+    season: $('#season').value,
+    desc: $('#desc').value.trim(),
+    lat: currentGPS.lat,
+    lng: currentGPS.lng,
+    photoDataURL: currentPhotoDataURL,
+    createdAt: Date.now()
+  };
+  state.data.push(item);
+  save();
+  renderMarkers();
+  resetForm();
+  sheet.style.display = 'none';
+  state.map.setView([item.lat, item.lng], 15);
+});
+
+function resetForm(){
+  $('#title').value=''; $('#species').value=''; $('#season').value=''; $('#desc').value='';
+  photoInput.value=''; preview.src=''; preview.style.display='none';
+  currentGPS=null; currentPhotoDataURL=null; gpsBadge.textContent='GPS nav nolasīts';
+  validateForm();
+}
+
+// Export/Import/Clear
+$('#btn-export').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(state.data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href=url; a.download='senotajs-spots.json'; a.click(); URL.revokeObjectURL(url);
+};
+$('#btn-import').onclick = ()=> $('#import').click();
+$('#import').addEventListener('change', async e=>{
+  const file = e.target.files?.[0]; if (!file) return;
+  try { const text = await file.text(); const arr = JSON.parse(text); if (Array.isArray(arr)) { state.data = arr; save(); renderMarkers(); } }
+  catch { alert('Neizdevās importēt.'); }
+});
+$('#btn-clear').onclick = ()=>{
+  if (confirm('Dzēst visus punktus šajā ierīcē?')) { state.data=[]; save(); renderMarkers(); }
+};
+
+// Init
+load();
+initMap();
+
+// iOS PWA norāde: lietotājam var parādīt tooltipu par "Add to Home Screen"
+</script>
+</body>
+</html>

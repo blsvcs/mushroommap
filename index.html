@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sēņotājs — Web pilots (PWA + Filtri)</title>
+  <title>Sēņotājs — Web pilots (PWA)</title>
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Sēņotājs" />
   <meta name="theme-color" content="#8b5cf6"/>
@@ -17,14 +17,12 @@
   <style>
     html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
     #app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
-    header { padding: .5rem .75rem; display: grid; gap: .5rem; align-items: center; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: #fff; z-index: 1000; }
-    header .row { display:flex; align-items:center; gap:.5rem; }
-    header h1 { font-size: 1.05rem; margin: 0; font-weight: 700; }
-    .spacer { flex: 1; }
+    header { padding: .75rem 1rem; display: flex; gap: .5rem; align-items: center; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: #fff; z-index: 1000; }
+    header h1 { font-size: 1.1rem; margin: 0; font-weight: 700; }
+    header .spacer { flex: 1; }
     button, .btn { appearance: none; border: 1px solid #d1d5db; background: #fff; padding: .5rem .75rem; border-radius: .75rem; font-weight: 600; }
     button.primary { background: #8b5cf6; border-color: #7c3aed; color: #fff; }
     button:disabled { opacity: .5; }
-    input[type="search"], select { width: 100%; padding: .5rem .65rem; border-radius: .65rem; border: 1px solid #d1d5db; }
     #map { height: 100%; width: 100%; }
     .floating { position: absolute; right: .75rem; bottom: .75rem; display: grid; gap: .5rem; }
     .card { background: rgba(255,255,255,.96); backdrop-filter: saturate(1.2) blur(6px); border: 1px solid #e5e7eb; border-radius: 1rem; padding: .75rem; box-shadow: 0 10px 20px rgba(0,0,0,.06); }
@@ -37,46 +35,24 @@
     footer { padding: .5rem; text-align: center; font-size: .8rem; color: #6b7280; border-top: 1px solid #e5e7eb; }
     .warn { color:#b45309; }
     .ok { color:#065f46; }
-    .pill { border: 1px solid #e5e7eb; padding: .35rem .5rem; border-radius: 999px; background: #f9fafb; }
   </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <div class="row">
-      <h1>Sēņotājs</h1>
-      <span class="badge" id="count">0 punkti</span>
-      <div class="spacer"></div>
-      <button id="btn-locate">Mana vieta</button>
-      <button id="btn-add" class="primary">+ Pievienot</button>
-    </div>
-    <div class="row">
-      <input id="q" type="search" placeholder="Meklēt (nosaukums, suga, apraksts)" />
-    </div>
-    <div class="row">
-      <select id="seasonFilter">
-        <option value="">Sezona: visas</option>
-        <option>Vasara</option>
-        <option>Rudens</option>
-        <option>Pavasaris</option>
-      </select>
-      <input id="speciesFilter" type="search" placeholder="Suga: piem., baravika" />
-      <label class="pill"><input type="checkbox" id="nearOnly" /> Tuvākie</label>
-      <select id="nearRadius">
-        <option value="2">2 km</option>
-        <option value="5" selected>5 km</option>
-        <option value="10">10 km</option>
-        <option value="25">25 km</option>
-      </select>
-    </div>
+    <h1>Sēņotājs (web pilots)</h1>
+    <span class="badge" id="count">0 punkti</span>
+    <div class="spacer"></div>
+    <button id="btn-locate">Mana vieta</button>
+    <button id="btn-add" class="primary">+ Pievienot</button>
   </header>
   <div id="map"></div>
   <footer>
-    Foto ar GPS ir <b>obligāts</b>. Dati glabājas šajā ierīcē. <span id="pwa-status"></span>
+    Foto ar GPS ir <b>obligāts</b>. Ja foto nav GPS, punkts netiks saglabāts. Dati glabājas šajā ierīcē. <span id="pwa-status"></span>
   </footer>
 </div>
 
-<!-- Add Spot Sheet -->
+<!-- Sheet for adding a spot -->
 <div id="sheet" class="sheet" style="display:none">
   <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem">
     <strong>Jauns punkts</strong>
@@ -110,7 +86,7 @@
   </div>
 </div>
 
-<!-- Tools card -->
+<!-- Floating actions -->
 <div class="floating">
   <div class="card" style="display:grid; gap:.5rem;">
     <button id="btn-export">Eksportēt (.json)</button>
@@ -131,25 +107,20 @@ const state = {
   map: null,
   cluster: null,
   data: [], // {id,title,species,season,desc,lat,lng,photoDataURL,createdAt}
-  me: null  // {lat,lng}
 };
 
 const $ = sel => document.querySelector(sel);
 
 // --- Local Storage ---
-const KEY = 'mushroommap.spots.v3';
+const KEY = 'mushroommap.spots.v2';
 function load() {
   try { state.data = JSON.parse(localStorage.getItem(KEY) || '[]'); }
   catch { state.data = []; }
-  updateCount();
+  $('#count').textContent = `${state.data.length} punkti`;
 }
 function save() {
   localStorage.setItem(KEY, JSON.stringify(state.data));
-  updateCount();
-}
-function updateCount() {
-  const shown = filterSpots(state.data).length;
-  $('#count').textContent = `${shown}/${state.data.length} punkti redzami`;
+  $('#count').textContent = `${state.data.length} punkti`;
 }
 
 // --- Map init ---
@@ -158,105 +129,41 @@ function initMap() {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(state.map);
   state.cluster = L.markerClusterGroup();
   state.map.addLayer(state.cluster);
-  state.map.setView([56.9496, 24.1052], 12); // Rīga kā sākums
+  state.map.setView([56.9496, 24.1052], 12); // Rīga kā noklusējums
   renderMarkers();
 }
 
 function popupHtml(s) {
-  let dist = '';
-  if (state.me) {
-    const d = distanceKm(state.me, {lat:s.lat, lng:s.lng});
-    dist = `<div style=\"color:#6b7280;font-size:.8rem\">~${d.toFixed(2)} km no manis</div>`;
-  }
   return `
-    <div style="min-width:200px">
+    <div style="min-width:180px">
       <strong>${escapeHtml(s.title || 'Sēņu vieta')}</strong><br/>
       <small>${fmt(s.species)} ${fmt(s.season)}</small><br/>
       ${s.photoDataURL ? `<img src="${s.photoDataURL}" style="width:100%;max-height:140px;object-fit:cover;margin-top:.25rem;border-radius:.35rem;border:1px solid #eee"/>` : ''}
       ${s.desc ? `<div style='margin-top:.25rem'>${escapeHtml(s.desc)}</div>` : ''}
       <div style="margin-top:.25rem;color:#6b7280;font-size:.8rem">${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</div>
-      ${dist}
     </div>`;
 }
 
 function renderMarkers() {
-  const list = filterSpots(state.data);
   state.cluster.clearLayers();
-  list.forEach(s => {
+  state.data.forEach(s => {
     const m = L.marker([s.lat, s.lng]);
     m.bindPopup(popupHtml(s));
     state.cluster.addLayer(m);
   });
-  // Fit bounds if there are markers
-  if (list.length > 0) {
-    const group = new L.featureGroup(list.map(s => L.marker([s.lat, s.lng])));
-    const b = group.getBounds();
-    if (b.isValid()) state.map.fitBounds(b.pad(0.2));
-  }
-  updateCount();
 }
 
 function escapeHtml(str){ return (str||'').replace(/[&<>"]+/g, s=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;"}[s])); }
 function fmt(x){ return x ? `<span class='badge'>${escapeHtml(x)}</span>` : ''; }
 
-// --- Haversine distance (km) ---
-function distanceKm(a, b) {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI/180;
-  const dLng = (b.lng - a.lng) * Math.PI/180;
-  const la1 = a.lat * Math.PI/180;
-  const la2 = b.lat * Math.PI/180;
-  const x = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
-  return R * c;
-}
-
-// --- Filters ---
-function filterSpots(arr) {
-  const q = $('#q').value.trim().toLowerCase();
-  const season = $('#seasonFilter').value;
-  const species = $('#speciesFilter').value.trim().toLowerCase();
-  const nearOnly = $('#nearOnly').checked;
-  const radiusKm = parseFloat($('#nearRadius').value || '5');
-
-  let list = arr.filter(s => {
-    const text = (s.title + ' ' + (s.species||'') + ' ' + (s.desc||'')).toLowerCase();
-    if (q && !text.includes(q)) return false;
-    if (season && s.season !== season) return false;
-    if (species && !(s.species||'').toLowerCase().includes(species)) return false;
-    return true;
-  });
-
-  if (nearOnly && state.me) {
-    list = list
-      .map(s => ({...s, _d: distanceKm(state.me, {lat:s.lat, lng:s.lng})}))
-      .filter(s => s._d <= radiusKm)
-      .sort((a,b) => a._d - b._d);
-  } else if (q || season || species) {
-    // keep original order
-  }
-
-  return list;
-}
-
-// --- UI: Locate & Nearest ---
+// --- UI controls ---
 $('#btn-locate').addEventListener('click', ()=>{
   if (!navigator.geolocation) return alert('Šajā ierīcē nav pieejams GPS.');
   navigator.geolocation.getCurrentPosition(pos=>{
-    state.me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    state.map.setView([state.me.lat, state.me.lng], 13);
-    renderMarkers();
-  }, ()=> alert('Neizdevās iegūt atrašanās vietu.'));
+    state.map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+  }, ()=> alert('Neizdevās iegūt atrašanās vietu.')); 
 });
 
-// React on filters
-['q','seasonFilter','speciesFilter','nearOnly','nearRadius'].forEach(id => {
-  document.getElementById(id).addEventListener('input', ()=>{
-    renderMarkers();
-  });
-});
-
-// --- Add Spot Sheet ---
 const sheet = $('#sheet');
 $('#btn-add').onclick = ()=> { sheet.style.display = 'block'; };
 $('#btn-close').onclick = ()=> { resetForm(); sheet.style.display = 'none'; };
@@ -268,14 +175,17 @@ const gpsBadge = $('#gps-indicator');
 const ageBadge = $('#age-indicator');
 let currentGPS = null;
 let currentPhotoDataURL = null;
+let currentPhotoAgeDays = null;
 
 function withinLatvia(coord) {
+  // Rough bbox for LV
   const latOK = coord.lat >= 55.67 && coord.lat <= 58.10;
   const lngOK = coord.lng >= 20.97 && coord.lng <= 28.25;
   return latOK && lngOK;
 }
 
 async function resizeImage(file, maxWidth=1280) {
+  // returns dataURL resized (to reduce storage)
   const img = new Image();
   const blobURL = URL.createObjectURL(file);
   await new Promise(res=>{ img.onload = res; img.src = blobURL; });
@@ -292,7 +202,7 @@ async function resizeImage(file, maxWidth=1280) {
 }
 
 photoInput.addEventListener('change', async (e)=>{
-  currentGPS = null; currentPhotoDataURL = null; 
+  currentGPS = null; currentPhotoDataURL = null; currentPhotoAgeDays = null;
   gpsBadge.textContent = 'GPS tiek nolasīts…'; ageBadge.textContent = 'Foto vecums: —';
   const file = e.target.files?.[0];
   if (!file) { gpsBadge.textContent = 'GPS nav nolasīts'; return; }
@@ -302,31 +212,36 @@ photoInput.addEventListener('change', async (e)=>{
     if (exif && exif.latitude && exif.longitude) {
       currentGPS = { lat: exif.latitude, lng: exif.longitude };
       gpsBadge.textContent = `GPS: ${exif.latitude.toFixed(5)}, ${exif.longitude.toFixed(5)}`;
-      if (!withinLatvia(currentGPS) && !document.getElementById('allow-outside-lv').checked) {
+      if (!withinLatvia(currentGPS) && !$('#allow-outside-lv').checked) {
         gpsBadge.textContent += '  (ārpus LV – atzīmē atļauju, ja apzināti)';
-      }
-      const ts = exif.DateTimeOriginal || exif.CreateDate || exif.ModifyDate;
-      if (ts) {
-        const d = new Date(ts);
-        if (!isNaN(d)) {
-          const days = Math.round((Date.now() - d.getTime())/86400000);
-          ageBadge.textContent = `Foto vecums: ${days} d.`;
-          if (days > 30) ageBadge.classList.add('warn'); else ageBadge.classList.remove('warn');
-        }
       }
     } else {
       gpsBadge.textContent = 'GPS nav atrasts – pārbaudi kameras iestatījumus';
+    }
+
+    // age check
+    const ts = exif.DateTimeOriginal || exif.CreateDate || exif.ModifyDate;
+    if (ts) {
+      const d = new Date(ts);
+      if (!isNaN(d)) {
+        const days = Math.round((Date.now() - d.getTime())/86400000);
+        currentPhotoAgeDays = days;
+        ageBadge.textContent = `Foto vecums: ${days} d.`;
+        if (days > 30) ageBadge.classList.add('warn'); else ageBadge.classList.remove('warn');
+      }
     }
   } catch(err){
     console.error(err);
     gpsBadge.textContent = 'Kļūda lasot EXIF';
   }
 
+  // Preview (resized)
   try {
     currentPhotoDataURL = await resizeImage(file);
     preview.src = currentPhotoDataURL; 
     preview.style.display = 'block';
   } catch(e) {
+    // fallback
     const reader = new FileReader();
     reader.onload = ev => { preview.src = ev.target.result; preview.style.display = 'block'; currentPhotoDataURL = ev.target.result; };
     reader.readAsDataURL(file);
@@ -337,19 +252,20 @@ photoInput.addEventListener('change', async (e)=>{
 
 function validateForm(){
   let ok = !!($('#title').value.trim()) && !!currentGPS && !!currentPhotoDataURL;
-  if (currentGPS && !withinLatvia(currentGPS) && !document.getElementById('allow-outside-lv').checked) ok = false;
+  if (currentGPS && !withinLatvia(currentGPS) && !$('#allow-outside-lv').checked) ok = false;
   $('#btn-save').disabled = !ok;
 }
 ['title','species','season','desc','allow-outside-lv'].forEach(id => { document.getElementById(id)?.addEventListener('input', validateForm); });
 
 function isDuplicate(coord) {
+  // consider dup if within ~15 meters (approx 0.00015 deg)
   const eps = 0.00015;
   return state.data.some(s => Math.abs(s.lat - coord.lat) < eps && Math.abs(s.lng - coord.lng) < eps);
 }
 
 $('#btn-save').addEventListener('click', ()=>{
   if (!currentGPS) { alert('Nepieciešamas GPS koordinātes foto metadatos.'); return; }
-  if (!withinLatvia(currentGPS) && !document.getElementById('allow-outside-lv').checked) { 
+  if (!withinLatvia(currentGPS) && !$('#allow-outside-lv').checked) { 
     alert('Punkts ārpus Latvijas. Atzīmē atļauju, ja tas ir apzināti.');
     return;
   }
